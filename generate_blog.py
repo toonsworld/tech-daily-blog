@@ -31,27 +31,12 @@ def slugify(text):
     text = re.sub(r'[^\w\s-]', '', text.lower())
     return re.sub(r'[-\s]+', '-', text).strip('-')[:60]
 
-def get_working_model(client):
-    available = []
-    for m in client.models.list():
-        name = m.name.replace("models/", "")
-        if "flash" in name.lower() and "image" not in name.lower() and "audio" not in name.lower():
-            available.append(name)
-    print("Available Flash models:", available)
-    for m in available:
-        if "3" in m or "2.5" in m or "2.0" in m:
-            return m
-    return available[0] if available else "gemini-2.0-flash"
-
 def write_article(topic):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("GEMINI_API_KEY missing!")
 
     client = genai.Client(api_key=api_key)
-    model_name = get_working_model(client)
-    print(f"Using model: {model_name}")
-
     prompt = f"""
     Write an engaging, original, SEO-optimized 700-word blog article in simple English about this trending tech news topic: "{topic}".
     
@@ -62,13 +47,21 @@ def write_article(topic):
     - Why it matters to everyday users
     - A short FAQ section at the end
     """
-    response = client.models.generate_content(
-        model=model_name,
-        contents=prompt,
-    )
-    content = response.text.strip()
-    content = re.sub(r"^```html\s*|\s*```$", "", content)
-    return content
+
+    for model_name in ["gemini-3.5-flash", "gemini-flash-latest", "gemini-3-flash-preview"]:
+        try:
+            print(f"Trying model: {model_name}")
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+            )
+            content = response.text.strip()
+            content = re.sub(r"^```html\s*|\s*```$", "", content)
+            return content
+        except Exception as e:
+            print(f"Model {model_name} failed: {e}")
+
+    raise RuntimeError("All models failed to generate content.")
 
 def build_html_pages(posts):
     os.makedirs("posts", exist_ok=True)
@@ -121,39 +114,4 @@ def build_html_pages(posts):
 
     index_html = f"""<!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{SITE_TITLE} - Latest Tech & AI News</title>
-    {base_style}
-</head>
-<body>
-    <header><a href="index.html">{SITE_TITLE}</a><p style="margin:5px 0 0;font-size:14px;color:#9ca3af;">Daily Tech, AI & Digital Updates</p></header>
-    {cards_html}
-    <footer>© {datetime.datetime.now().year} {SITE_TITLE}</footer>
-</body>
-</html>"""
-    with open("index.html", "w", encoding="utf-8") as f:
-        f.write(index_html)
-
-if __name__ == "__main__":
-    posts = load_posts()
-    existing_titles = {p["title"] for p in posts}
-    topic = get_trending_topic(existing_titles)
-
-    if not topic:
-        print("Koi naya topic nahi mila.")
-    else:
-        print(f"Writing article on: {topic}")
-        article_html = write_article(topic)
-        new_post = {
-            "title": topic,
-            "slug": slugify(topic),
-            "date": datetime.date.today().strftime("%B %d, %Y"),
-            "content": article_html
-        }
-        posts.append(new_post)
-        save_posts(posts)
-        build_html_pages(posts)
-        print("Website updated successfully!")
-    
+<head
